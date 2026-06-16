@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HMA Outline Web Panel</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; font-family: sans-serif; }
+        .navbar-brand { font-weight: bold; letter-spacing: 1px; }
+        .card { border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .table img { width: 24px; }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar navbar-dark bg-dark mb-4">
+        <div class="container">
+            <span class="navbar-brand mb-0 h1">HMA Outline Web Panel</span>
+            <button class="btn btn-outline-light btn-sm" onclick="fetchUsers()">🔄 Refresh</button>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="card p-4 mb-4">
+            <h4 class="mb-3 text-secondary">User များနှင့် Data Usage စာရင်း</h4>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ID</th>
+                            <th>အမည် (Name)</th>
+                            <th>သုံးပြီးသမျှ Data Usage</th>
+                            <th>လုပ်ဆောင်ချက် (Action)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="userTableBody">
+                        <tr>
+                            <td colspan="4" class="text-center text-muted">User စာရင်းများကို ဆွဲယူနေပါသည်...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Box (Reset အောင်မြင်ကြောင်းနှင့် Key အသစ်ပြရန်) -->
+    <div class="modal fade" id="resultModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title">Reset အောင်မြင်ပါသည်</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p id="modalMessage"></p>
+                    <label class="form-label fw-bold">Connection Key အသစ် (User ဆီ ပို့ပေးရန်):</label>
+                    <textarea class="form-control" id="newKeyArea" rows="3" readonly></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ပိတ်မည်</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap & Custom Logic JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const resultModal = new bootstrap.Modal(document.getElementById('resultModal'));
+
+        // Website စပွင့်ချင်း User စာရင်းဆွဲယူရန်
+        document.addEventListener("DOMContentLoaded", fetchUsers);
+
+        async function fetchUsers() {
+            try {
+                const response = await fetch('/api/users');
+                const data = await response.json();
+                
+                if(!data.success) {
+                    alert('Error: ' + data.message);
+                    return;
+                }
+
+                const tbody = document.getElementById('userTableBody');
+                tbody.innerHTML = '';
+
+                if(data.users.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="4" class="text-center">User မရှိသေးပါ။</td></tr>`;
+                    return;
+                }
+
+                data.users.forEach(user => {
+                    tbody.innerHTML += `
+                        <tr>
+                            <td><strong>#${user.id}</strong></td>
+                            <td>${user.name}</td>
+                            <td><span class="badge bg-info text-dark font-monospace">${user.dataUsageReadable}</span></td>
+                            <td>
+                                <button class="btn btn-danger btn-sm" onclick="resetUsage('${user.id}')">
+                                    ⚙️ Reset Usage
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                });
+            } catch (error) {
+                console.error(error);
+                alert('Server နှင့် ချိတ်ဆက်မှု မအောင်မြင်ပါ။');
+            }
+        }
+
+        async function resetUsage(keyId) {
+            if(!confirm(`သေချာပါသလား? ဤ User ၏ Data Usage ကို ဖျက်ပြီး 0 GB ပြန်လုပ်ပါမည်။`)) return;
+
+            // ခလုတ်ကို ခေတ္တပိတ်ထားရန်
+            document.body.style.pointerEvents = 'none';
+
+            try {
+                const response = await fetch('/api/users/reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ keyId })
+                });
+                const data = await response.json();
+
+                if(data.success) {
+                    document.getElementById('modalMessage').innerText = data.message;
+                    document.getElementById('newKeyArea').value = data.newKey.accessUrl;
+                    resultModal.show();
+                    fetchUsers(); // Table ကို Refresh ပြန်လုပ်ခြင်း
+                } else {
+                    alert('Reset လုပ်၍မရပါ: ' + data.message);
+                }
+            } catch (error) {
+                alert('အမှားအယွင်းတစ်ခု ရှိသွားပါသည်။');
+            } finally {
+                document.body.style.pointerEvents = 'auto';
+            }
+        }
+    </script>
+</body>
+</html>
