@@ -6,7 +6,9 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const OUTLINE_API_URL = process.env.OUTLINE_API_URL;
+
+// ကော်မာ ခံထားသော API URL များကို Array အဖြစ် ပြောင်းလဲခြင်း
+const OUTLINE_API_URLS = process.env.OUTLINE_API_URLS ? process.env.OUTLINE_API_URLS.split(',') : [];
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -21,10 +23,35 @@ function formatBytes(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+// ရွေးချယ်ထားသော Server ရဲ့ URL ကို သန့်စင်ပေးမည့် Helper
+function getCleanUrl(serverIndex) {
+    const idx = parseInt(serverIndex);
+    if (isNaN(idx) || idx < 0 || idx >= OUTLINE_API_URLS.length) return null;
+    const url = OUTLINE_API_URLS[idx].trim();
+    return url.endsWith('/') ? url.slice(0, -1) : url;
+}
+
+// ၁။ API: လက်ရှိ ချိတ်ဆက်ထားသော Server အရေအတွက်ကို ပို့ပေးရန်
+app.get('/api/servers', (req, res) => {
+    const serverList = OUTLINE_API_URLS.map((url, index) => {
+        try {
+            const parsedUrl = new URL(url.trim());
+            return { index, name: `Server ${index + 1} (${parsedUrl.hostname})` };
+        } catch (e) {
+            return { index, name: `Server ${index + 1}` };
+        }
+    });
+    res.json({ success: true, servers: serverList });
+});
+
+// ၂။ API: ရွေးချယ်ထားသည့် Server ဆီက User များစာရင်း ယူရန်
 app.get('/api/users', async (req, res) => {
+    const serverIdx = req.query.serverIdx || 0;
+    const cleanApiUrl = getCleanUrl(serverIdx);
+
+    if (!cleanApiUrl) return res.status(400).json({ success: false, message: 'Invalid Server Index' });
+
     try {
-        const cleanApiUrl = OUTLINE_API_URL.endsWith('/') ? OUTLINE_API_URL.slice(0, -1) : OUTLINE_API_URL;
-        
         const keysRes = await axios.get(`${cleanApiUrl}/access-keys`, { httpsAgent: agent });
         const metricsRes = await axios.get(`${cleanApiUrl}/metrics/transfer`, { httpsAgent: agent });
 
@@ -48,13 +75,15 @@ app.get('/api/users', async (req, res) => {
     }
 });
 
+// ၃။ API: ရွေးချယ်ထားသည့် Server ပေါ်က User ကို Reset ချရန်
 app.post('/api/users/reset', async (req, res) => {
-    const { keyId } = req.body;
+    const { keyId, serverIdx } = req.body;
+    const cleanApiUrl = getCleanUrl(serverIdx || 0);
+
+    if (!cleanApiUrl) return res.status(400).json({ success: false, message: 'Invalid Server Index' });
     if (!keyId) return res.status(400).json({ success: false, message: 'Key ID လိုအပ်ပါသည်။' });
 
     try {
-        const cleanApiUrl = OUTLINE_API_URL.endsWith('/') ? OUTLINE_API_URL.slice(0, -1) : OUTLINE_API_URL;
-
         const keysRes = await axios.get(`${cleanApiUrl}/access-keys`, { httpsAgent: agent });
         const targetKey = keysRes.data.accessKeys.find(k => k.id === keyId);
 
